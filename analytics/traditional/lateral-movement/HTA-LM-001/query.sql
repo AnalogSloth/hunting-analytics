@@ -1,9 +1,13 @@
 -- HTA-LM-001: SMB File Write with Subsequent Local Execution
 -- Detects lateral movement via SMB file staging and execution
--- OCSF Classes: network_activity (4001), process_activity (1007)
+-- OCSF Classes: smb_activity (4006), process_activity (1007)
 -- Author: analogsloth
 -- Created: 2025-02-07
--- Platform: ANSI SQL (tested on Snowflake, BigQuery compatible)
+-- Updated: 2025-02-08
+-- Platform: ANSI SQL (OCSF v1.3.0 compliant)
+
+-- Note: This detection requires SMB protocol visibility.
+-- Data sources: Network sensors with SMB parsing (Zeek), EDR with SMB monitoring
 
 -- Step 1: Identify SMB file write operations
 WITH smb_writes AS (
@@ -14,13 +18,15 @@ WITH smb_writes AS (
     dst_endpoint.hostname AS dest_host,
     LOWER(file.name) AS file_name,
     file.path AS remote_path,
-    metadata.product.vendor_name AS data_source
-  FROM network_activity
+    share AS share_name,
+    command AS smb_command,
+    metadata.product.name AS data_source
+  FROM smb_activity
   WHERE 
-    class_uid = 4001  -- Network Activity
-    AND activity_id = 6  -- Traffic
-    AND dst_endpoint.port = 445
-    AND protocol_name = 'SMB'
+    class_uid = 4006  -- SMB Activity
+    AND activity_id = 1  -- Traffic
+    AND command IN ('CREATE', 'WRITE')
+    AND share IN ('ADMIN$', 'C$', 'IPC$')
     AND file.name IS NOT NULL
     AND time >= CURRENT_TIMESTAMP - INTERVAL '7 days'
 ),
@@ -35,7 +41,7 @@ process_creation AS (
     actor.user.name AS user_account,
     process.cmd_line AS command_line,
     process.parent_process.file.path AS parent_image_path,
-    metadata.product.vendor_name AS data_source
+    metadata.product.name AS data_source
   FROM process_activity
   WHERE 
     class_uid = 1007  -- Process Activity
@@ -53,12 +59,14 @@ correlated_events AS (
     s.dest_host,
     s.file_name,
     s.remote_path,
+    s.share_name,
+    s.smb_command,
     p.image_path,
     p.user_account,
     p.command_line,
     p.parent_image_path,
-    s.data_source AS network_data_source,
-    p.data_source AS endpoint_data_source
+    s.data_source AS smb_data_source,
+    p.data_source AS process_data_source
   FROM smb_writes s
   INNER JOIN process_creation p
     ON s.dest_host = p.dest_host
@@ -75,7 +83,7 @@ SELECT
   CASE
     WHEN image_path LIKE '%\\Temp\\%' THEN 'High'
     WHEN image_path LIKE '%\\ProgramData\\%' THEN 'High'
-    WHEN image_path LIKE '%\\ADMIN$\\%' THEN 'High'
+    WHEN share_name = 'ADMIN$' THEN 'High'
     WHEN time_delta_seconds < 60 THEN 'Medium'
     ELSE 'Low'
   END AS severity
@@ -85,6 +93,6 @@ WHERE
   image_path NOT LIKE 'C:\\Windows\\System32%'
   AND image_path NOT LIKE 'C:\\Program Files%'
   AND image_path NOT LIKE 'C:\\Program Files (x86)%'
-  -- Add your environment-specific filters here
-  -- Example: AND source_ip NOT IN (SELECT ip FROM known_deployment_servers)
+  -- Add environment-specific filters:
+  -- AND source_ip NOT IN (SELECT ip FROM known_deployment_servers)
 ORDER BY severity DESC, time_delta_seconds ASC;

@@ -20,30 +20,41 @@ Detect adversary lateral movement by identifying instances where a file is writt
 
 **OCSF Event Classes**:
 - **Primary Class**: process_activity (class_uid: 1007)
-- **Secondary Class**: network_activity (class_uid: 4001)
+- **Secondary Class**: smb_activity (class_uid: 4006)
 
 **Required Fields**:
-- `process.file.path` - Process image path
-- `process.file.name` - Process filename
+
+**From smb_activity:**
+- `time` - Timestamp of SMB operation
+- `src_endpoint.ip` - Source IP of SMB connection
+- `dst_endpoint.ip` - Destination IP
+- `dst_endpoint.hostname` - Destination hostname
+- `file.name` - File name written
+- `file.path` - File path on share
+- `share` - Share name (ADMIN$, C$, etc.)
+- `command` - SMB command (CREATE, WRITE)
+
+**From process_activity:**
+- `time` - Process creation timestamp
 - `device.hostname` - Host where process executed
+- `process.file.name` - Process filename
+- `process.file.path` - Full process image path
 - `actor.user.name` - User account
-- `dst_endpoint.port` - Network destination port (445)
-- `protocol_name` - Network protocol (SMB)
-- `file.name` - File transferred via SMB
-- `file.path` - Remote file path
+- `process.cmd_line` - Command line
+- `process.parent_process.file.path` - Parent process
 
 **Minimum Data Sources**:
 - [x] Windows Security Event Logs (Event ID 4688) OR Sysmon (Event ID 1)
-- [x] Network flow data with SMB protocol parsing (Zeek, Suricata, EDR)
-- [x] Sysmon Event ID 11 (optional, for file hash correlation)
+- [x] Network sensors with SMB protocol parsing (Zeek SMB analyzer, Suricata)
+- [x] EDR with SMB monitoring capabilities
 
 ## Technical Context
 
 **Detection Strategy:**
 
-This analytic correlates SMB file write activity with subsequent process creation events on the destination host. It detects when a file is written to a remote administrative share (ADMIN$, C$) via SMB and then executed within a 5-minute temporal window on that same host.
+This analytic correlates SMB file write operations with subsequent process creation events. It uses the OCSF `smb_activity` (4006) class to capture SMB CREATE/WRITE commands targeting administrative shares (ADMIN$, C$), then correlates with `process_activity` (1007) to detect when the written file executes locally within a 5-minute window.
 
-The detection uses network flow data to identify SMB write operations (SMB2 CREATE with write disposition on port 445), then correlates this with process creation events where the image path matches the remotely written file. False positive minimization includes filtering known deployment servers, excluding system processes, and establishing baselines for expected source-destination pairs.
+The `smb_activity` class provides native SMB protocol awareness including the share name, SMB command type, and file details, making it ideal for detecting lateral movement patterns that leverage Windows administrative shares.
 
 **Adversary Tradecraft:**
 
@@ -79,29 +90,30 @@ Technical prerequisites:
 ### Pseudocode
 ```
 // Step 1: Identify SMB file write operations
-flow = search Flow:Message
-smb_write = filter flow where (
-  dest_port == "445" and 
-  protocol == "smb.write" or protocol == "smb2.create"
+smb = search SmbActivity:Traffic
+smb_write = filter smb where (
+  command in ["CREATE", "WRITE"] and
+  share in ["ADMIN$", "C$", "IPC$"] and
+  file.name is not null
 )
-smb_write.file_name = smb_write.proto_info.file_name
-smb_write.dest_host = smb_write.dest_ip
+smb_write.file_name = smb_write.file.name
+smb_write.dest_host = smb_write.dst_endpoint.hostname
 
 // Step 2: Search for process creation events
-process = search Process:Create
+process = search ProcessActivity:Launch
 
 // Step 3: Correlate SMB write with subsequent process execution
 remote_exec = join (smb_write, process) where (
-  smb_write.dest_host == process.hostname and
-  smb_write.file_name == process.image_path.file_name and
+  smb_write.dest_host == process.device.hostname and
+  smb_write.file_name == process.file.name and
   (process.time - smb_write.time) <= 5 minutes and
   (process.time - smb_write.time) >= 0
 )
 
 // Step 4: Filter known false positives
 remote_exec = filter remote_exec where (
-  process.image_path not in [known_legitimate_paths] and
-  smb_write.src_ip not in [known_deployment_servers]
+  process.file.path not in [known_legitimate_paths] and
+  smb_write.src_endpoint.ip not in [known_deployment_servers]
 )
 
 output remote_exec
