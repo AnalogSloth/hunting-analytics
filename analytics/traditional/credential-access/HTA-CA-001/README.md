@@ -2,8 +2,8 @@
 
 **ID**: HTA-CA-001  
 **Author**: analogsloth  
-**Created**: 2025-03-15  
-**Updated**: 2025-03-15
+**Created**: 2026-02-24
+**Updated**: 2026-02-24
 
 ## Goal
 
@@ -170,7 +170,7 @@ python3 GetUserSPNs.py -dc-ip <DC_IP> CORP/username:password -request -outputfil
 
 **External**:
 - [MITRE ATT&CK T1558.003](https://attack.mitre.org/techniques/T1558/003/)
-- [Harmj0y — Kerberoasting Without Mimikatz](https://www.harmj0y.net/blog/powershell/kerberoasting-without-mimikatz/) — foundational research
+- [Harmj0y — Kerberoasting Without Mimikatz](https://blog.harmj0y.net/powershell/kerberoasting-without-mimikatz/) — foundational research
 - [SpecterOps — Kerberoasting Revisited](https://posts.specterops.io/kerberoasting-revisited-d434351bd4d1) — AES Kerberoasting evasion
 - [Microsoft — Kerberos Authentication Overview](https://docs.microsoft.com/en-us/windows-server/security/kerberos/kerberos-authentication-overview)
 - [Detecting Kerberoasting Activity — Sean Metcalf](https://adsecurity.org/?p=3458)
@@ -179,11 +179,11 @@ python3 GetUserSPNs.py -dc-ip <DC_IP> CORP/username:password -request -outputfil
 ---
 
 **Detection Maturity Level**: 4 / 5  
-**Last Validated**: 2025-03-15  
+**Last Validated**: 2026-02-24  
 **Validation Result**: Pass (synthetic data — see test-data.sql)
 
 **OCSF Fields to Validate**:
-Run `scripts/validate-ocsf.sh` against these fields before production deployment:
+Validate these fields before production deployment:
 - `authentication.activity_id` — confirm values `3` and `4` map to Kerberos ticket requests in your pipeline
 - `authentication.authentication_token.encryption_details.algorithm` — confirm your ETL populates this vs. using `unmapped`
 - `authentication.auth_protocol` — confirm string value used (`'Kerberos'` vs `'kerberos'` vs `'KRB5'`)
