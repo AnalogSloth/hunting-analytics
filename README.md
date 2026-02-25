@@ -114,15 +114,15 @@ MIT License - see [LICENSE](./LICENSE) for details.
 
 ## 📊 Analytics Count
 
-![Analytics Count](https://img.shields.io/badge/analytics-1-blue)
+![Analytics Count](https://img.shields.io/badge/analytics-4-blue)
 ![OCSF](https://img.shields.io/badge/schema-OCSF%201.x-green)
 ![SQL](https://img.shields.io/badge/language-SQL-orange)
 
-**Traditional**: 1 analytic  
+**Traditional**: 3 analytic  
 **Cloud-Native**: 0 analytics  
-**LLM Security**: 0 analytics
+**LLM Security**: 1 analytics
 
-*Last updated: February 2025*
+*Last updated: February 2026*
 
 ---
 
